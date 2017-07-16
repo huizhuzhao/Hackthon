@@ -9,12 +9,11 @@ import pandas as pd
 
 import utils
 import keras_model
-from Utils import pil_utils
 
 
 TRAIN_DIR = './data/data-train'
 TEST_DIR = './data/data-test'
-TRUE_TEST_LABELS = './data/data-test/expression_test_result.csv'
+TRUE_TEST_LABELS = './data/expression_test_result.csv'
 config_path = './logs/config.json'
 hdf5_path = './logs/VGG.390--0.93.hdf5'
 
@@ -26,13 +25,11 @@ def train_data():
     >>> print(batch_x.shape, batch_y.shape)
     (64, 128, 128, 1), (64, 7)
     """
-    generator = utils.Generator(target_size=utils.TARGET_SIZE, 
-                                color_mode='grayscale', 
+    generator = utils.Generator(target_size=utils.TARGET_SIZE,
+                                color_mode='grayscale',
                                 batch_size=utils.BATCH_SIZE)
 
     train_gen = generator.dir_generator(TRAIN_DIR)
-
-
     return train_gen
 
 def test_data():
@@ -42,12 +39,12 @@ def test_data():
     (3036, 128, 128, 1), (3036, 7)
     """
     ## prepare test data
-    arrays, image_ids = utils.load_images(TEST_DIR, 
-                                          grayscale=True, 
+    arrays, image_ids = utils.load_images(TEST_DIR,
+                                          grayscale=True,
                                           target_size=utils.TARGET_SIZE)
-    generator = utils.Generator(target_size=utils.TARGET_SIZE, 
-                                color_mode='grayscale', 
-                                batch_size=len(image_ids), 
+    generator = utils.Generator(target_size=utils.TARGET_SIZE,
+                                color_mode='grayscale',
+                                batch_size=len(image_ids),
                                 shuffle=False)
 
 
@@ -86,12 +83,13 @@ def main():
     print(model.output_shape)
 
     callbacks = utils.get_callbacks('./logs')
-    model.fit_generator(train_gen, 
-                        steps_per_epoch=6000/utils.BATCH_SIZE, 
-                        epochs=500, 
+    model.fit_generator(train_gen,
+                        steps_per_epoch=6000/utils.BATCH_SIZE,
+                        epochs=500,
                         verbose=1,
                         callbacks=callbacks,
-                        validation_data=(X_test, y_test))
+                        validation_data=(X_test, y_test),
+                        validation_steps=len(X_test)/utils.BATCH_SIZE)
 
 
 if __name__ == '__main__':

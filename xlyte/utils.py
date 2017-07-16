@@ -10,6 +10,7 @@ import joblib
 import json
 
 from keras.models import Sequential
+from keras.callbacks import CSVLogger, ModelCheckpoint
 from keras.preprocessing import image as keras_image
 
 
