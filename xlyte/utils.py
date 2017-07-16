@@ -124,13 +124,36 @@ class Generator(object):
 
 
 def load_model(config_path, hdf5_path):
-    config = joblib.load(config_path)
+    config = json.load(open(config_path, 'r'))
     model = Sequential().from_config(config)
     model.load_weights(hdf5_path)
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
 
     return model
+
+
+def get_callbacks(log_dir):
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    log_file = os.path.join(log_dir, 'logger.csv')
+    model_name = os.path.join(log_dir, 'VGG')
+    model_name = model_name + '.{epoch:02d}--{val_acc:.2f}.hdf5'
+
+    logger = CSVLogger(log_file, append=True)
+    checkpoint = ModelCheckpoint(model_name, monitor='val_acc',
+            verbose=1, save_best_only=True)
+    callbacks = [checkpoint, logger]
+
+    return callbacks
+
+
+def dump_config(config, log_dir):
+    path = os.path.join(log_dir, 'config.json')
+    with open(path, 'w') as f_w:
+        json.dump(config, f_w)
+
 
 
 
