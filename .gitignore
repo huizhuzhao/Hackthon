@@ -2,7 +2,6 @@
 *.jpg
 *.log
 *.dat
-*.csv
 *.joblib
 *.joblib.gz
 *.txt
