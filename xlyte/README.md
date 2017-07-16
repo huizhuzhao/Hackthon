@@ -18,6 +18,9 @@ data: https://pan.baidu.com/s/1nuXSgxb
 * data-test.tar.gz: testing data (3040 images)
 * expression_test_result.csv (true labels for test data)
 
+### train result
+![](http://ok8deh2w3.bkt.clouddn.com/acc.png)
+
 ### requirements
  * opencv `conda install opencv -c menpo`
  * keras
