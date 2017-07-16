@@ -6,11 +6,15 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import joblib
+import json
+
+from keras.models import Sequential
 from keras.preprocessing import image as keras_image
 
 
 BATCH_SIZE = 128
-TARGET_SIZE = (128, 128)
+TARGET_SIZE = (128, 128) # (height, width)
 LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 LABELS_TO_INDEX = dict((l, i) for i, l in enumerate(LABELS))
 INDEX_TO_LABELS = dict((i, l) for i, l in enumerate(LABELS))
@@ -24,31 +28,41 @@ CAPTION = {
     6: [u'噢买噶', u'我去我去', u'吃惊', u'惊到了']}
 
 
-class Loader(object):
+def load_images(dir_path, grayscale=True, target_size=TARGET_SIZE):
+    """
+    load all the images in directory "dir_path"
 
-    def load_arrays(self, dir_path, grayscale=True, target_size=TARGET_SIZE):
-        names = [n for n in os.listdir(os.path.join(dir_path)) if n.endswith('jpg')]
-        pointers = [os.path.join(dir_path, n) for n in names]
+    inputs
+    ------
+    dir_path: dir path where images are located
+    grayscale: boolean, whether graycale or rgb arrays are returned
+    target_size: tuple (height, width), the array size that every images are converted to
+    """
 
-        arrays_list = []
-        names_list = []
-        failed_count = 0
-        for p in pointers:
-            try:
-                array = self._pointer_to_array(p, grayscale, target_size)
-                arrays_list.append(array)
-                names_list.append(os.path.basename(p).split('.')[0])
-            except:
-                failed_count += 1
-                pass
 
-        print('Failed: {0}, Total: {1}'.format(failed_count, len(pointers)))
-        return np.asarray(arrays_list, dtype=arrays_list[0].dtype), names_list
-
-    def _pointer_to_array(self, pointer, grayscale, target_size):
+    def _pointer_to_array(pointer, grayscale, target_size):
         img = keras_image.load_img(pointer, grayscale=grayscale, target_size=target_size)
         array = keras_image.img_to_array(img)
         return array
+
+    names = [n for n in os.listdir(os.path.join(dir_path)) if n.endswith('jpg')]
+    pointers = [os.path.join(dir_path, n) for n in names]
+
+    arrays_list = []
+    names_list = []
+    failed_count = 0
+    for p in pointers:
+        try:
+            array = _pointer_to_array(p, grayscale, target_size)
+            arrays_list.append(array)
+            names_list.append(os.path.basename(p).split('.')[0])
+        except:
+            failed_count += 1
+            pass
+
+    print('Failed: {0}, Total: {1}'.format(failed_count, len(pointers)))
+    return np.asarray(arrays_list, dtype=arrays_list[0].dtype), names_list
+
 
 
 class Generator(object):
@@ -106,6 +120,18 @@ class Generator(object):
             X = rgb2gray(X)
 
         generator = self.datagen.flow(X, Y, shuffle=self.shuffle, batch_size=self.batch_size)
+        return generator
+
+
+def load_model(config_path, hdf5_path):
+    config = joblib.load(config_path)
+    model = Sequential().from_config(config)
+    model.load_weights(hdf5_path)
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+
+    return model
+
 
 
 if __name__ == '__main__':
