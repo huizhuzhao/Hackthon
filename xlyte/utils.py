@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
 # Created Time: Thu 06 Jul 2017 09:40:01 PM CST
+# by wangmiao & huizhu
 
 
 import os
 import numpy as np
+import random
 import matplotlib.pyplot as plt
-import joblib
 import json
+import cv2
+from PIL import Image, ImageFont, ImageDraw
+import imageio
+
 
 from keras.models import Sequential
 from keras.callbacks import CSVLogger, ModelCheckpoint
@@ -28,7 +33,19 @@ CAPTION = {
     5: [u'心碎成渣渣', u'桑心', u'宝宝不开心', u'求安慰', u'求抱抱'],
     6: [u'噢买噶', u'我去我去', u'吃惊', u'惊到了']}
 
+COLOR = [
+    (255, 255, 255),
+    (255, 0, 0),
+    (255, 122, 0),
+    (255, 255, 0),
+    (0, 255, 0),
+    (0, 255, 255),
+    (0, 0, 255),
+    (255, 0, 255)]
 
+
+
+################# train model utils ###############
 def load_images(dir_path, grayscale=True, target_size=TARGET_SIZE):
     """
     load all the images in directory "dir_path"
@@ -156,17 +173,178 @@ def dump_config(config, log_dir):
         json.dump(config, f_w)
 
 
+################# image process ###############
+def extract_frames(ingif, outfolder):
+    '''
+    ingif, gif file
+    outfolder: directory path to store extracted images
+    '''
+    frame = Image.open(ingif)
+    nframes = 0
+    if not os.path.exists(outfolder):
+        os.makedirs(outfolder)
+
+    while frame:
+        background = Image.new("RGB", frame.size, (255, 255, 255))
+        background.paste(frame)
+        background.save('%s/%s-%s.jpg' % (outfolder, os.path.basename(ingif), nframes), 'JPEG')
+        nframes += 1
+        try:
+            frame.seek(nframes)
+        except EOFError:
+            break
+    return True
+
+
+def add_watermark(in_pic_name, watermark_str, x_idx, y_idx, out_dir):
+    '''
+    in_pic_name: string object, input picture name
+    out_pic_name: string object, output picture name
+    watermark_str: string
+    point to draw
+    y_idx: row
+    x_idx: col
+     0/0---X--->
+    |
+    |
+    Y
+    |
+    |
+    v
+
+    '''
+    with Image.open(in_pic_name).convert('RGBA') as im:
+        row, col = im.size
+        watermark = Image.new(im.mode, im.size)
+        d_s = ImageDraw.Draw(watermark)
+        font1 = ImageFont.truetype('./gif/Noto.otf', size=30)
+        color = random.choice(COLOR)
+        d_s.text((y_idx, x_idx), watermark_str, fill=color, font=font1)
+        out = Image.alpha_composite(im, watermark)
+        jpg_name = os.path.basename(in_pic_name)
+        out_jpg_path = os.path.join(out_dir, jpg_name)
+        out.save(out_jpg_path)
+
+    return None
+
+
+def cut_out_face(jpg_name):
+    '''
+    get jpg_name and cut it out
+    only select one face
+    '''
+    face_cascade = cv2.CascadeClassifier('./gif/haarcascade_frontalface_default.xml')
+    img = cv2.imread(jpg_name)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    image_faces = []
+    locations = []
+    for (x, y, w, h) in faces:
+         #cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+         image_faces.append(img[y: y+h, x:x+w])
+         locations.append((x,y,w,h))
+
+    if image_faces:
+        # resize
+        new_face = cv2.resize(image_faces[0], TARGET_SIZE[:2])
+        # save
+        #cv2.imwrite(jpg_name.strip('.jpg')+'face.jpg', new_face)
+        return new_face, (x,y,w,h)
+    else:
+        return None
+
+
+def detection(face_array, model):
+    '''
+    inputs
+    ------
+    face_array: shape=(height, width, channel)
+    return label of face
+    '''
+    X_test = face_array[np.newaxis, :, :, :]
+
+    generator = Generator(target_size=TARGET_SIZE,
+                                color_mode='grayscale',
+                                batch_size=BATCH_SIZE)
+
+    test_gen = generator.numpy_generator(X_test)
+    X_test = test_gen.next()
+    y_pred = model.predict(X_test)
+    label = np.argmax(y_pred)
+
+    return label
+
+
+def run(gif_file, model):
+    '''
+    pass
+    '''
+    # extract jpg files from gif in directory 'extract'
+    base_path = os.path.abspath('.')
+    extract_path = os.path.join(base_path, 'gif/extract')
+    extract_frames(gif_file, extract_path)
+
+    # frame_jpgs
+    frame_jpgs = sorted(
+        [f for f in os.listdir(extract_path) if f.endswith('.jpg')])
+    num_frames = len(frame_jpgs)
+
+    caption_location = []
+    for idx, jpg_name in enumerate(frame_jpgs):
+        feed_jpg = os.path.join(extract_path, jpg_name)
+        result = cut_out_face(feed_jpg)
+        if result is None:
+            caption_location.append(None)
+        else:
+            face_array, location = result
+            expression_num = detection(face_array, model)
+            caption = random.choice(CAPTION[expression_num])
+            caption_location.append((caption, location))
+
+    # get caption and location
+    # generate caption pictures
+    print('caption_location')
+    print(caption_location)
+    print('len(caption_location', len(caption_location))
+    out_path = os.path.join(base_path, 'gif/out')
+
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+
+    for capt_loc, jpg_name in zip(caption_location, frame_jpgs):
+        jpg_path = os.path.join(extract_path, jpg_name)
+        if capt_loc is None:
+            dst = os.path.join(out_path, jpg_name)
+            shutil.copyfile(jpg_path, dst)
+        else:
+            cap_str, loc = capt_loc
+            x,y,w,h = loc
+            add_watermark(jpg_path, cap_str, y+h, x, out_path)
+
+    # generate GIFs
+    file_names = [os.path.join(out_path, "{}-{}.jpg".format(os.path.basename(gif_file), i)) 
+                    for i in range(num_frames)]
+    print(file_names)
+    gif_path = os.path.join(base_path, 'gif/out/out.gif')
+    with imageio.get_writer(gif_path, mode='I') as writer:
+        for filename in file_names:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+
+    return gif_path
+
 
 
 if __name__ == '__main__':
-    dir_path = os.path.join(os.path.expanduser('~'), 'Hackthon/data-test')
-    names = [n for n in os.listdir(os.path.join(dir_path)) if n.endswith('jpg')]
-    pointers = [os.path.join(dir_path, n) for n in names]
+    out_dir = './gif/images'
 
-    loader = Loader()
-    array, names = loader.load_test_arrays(dir_path)
-    #array = loader._pointer_to_array(pointers[0], False, (41, 41))
-    print(array.shape)
-
-    from Teemo.utils import cv2_utils
-
+    #extract_frames(gif_path, out_dir)
+    #add_watermark(img_path, string, 0, 0, out_dir)
+    #face, idx = cut_out_face(img_path)
+    config_path = './logs/config.json'
+    hdf5_path = './logs/VGG.390--0.93.hdf5'
+    model = load_model(config_path, hdf5_path)
+    #detection(face, model)
+    #cv2_utils.show_array(face)
+    gif_path = run('./gif/g9.gif', model)
+    print(gif_path)

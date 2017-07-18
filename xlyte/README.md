@@ -26,3 +26,4 @@ data: https://pan.baidu.com/s/1nuXSgxb
  * keras
  * imageio `conda install -c conda-forge imageio`
  
+### authors: wangmiao & huizhu

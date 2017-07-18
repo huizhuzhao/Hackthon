@@ -6,6 +6,7 @@
 import os
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import utils
 import keras_model
@@ -74,7 +75,7 @@ def test_model():
     #val_res = model.evaluate(batch_x, batch_y)
     #print(val_res)
 
-def main():
+def train_model():
     train_gen = train_data()
     X_test, y_test = test_data()
 
@@ -90,6 +91,18 @@ def main():
                         callbacks=callbacks,
                         validation_data=(X_test, y_test),
                         validation_steps=len(X_test)/utils.BATCH_SIZE)
+
+
+def main():
+    logger_path = './logs/logger.csv'
+    df = pd.read_csv(logger_path)
+    plt.plot(df.epoch, df.acc, label='training', c='r')
+    plt.plot(df.epoch, df.val_acc, label='validation', c='b')
+    plt.legend(loc='upper left')
+    plt.xlabel('epoch')
+    plt.ylabel('acc')
+    plt.show()
+
 
 
 if __name__ == '__main__':
