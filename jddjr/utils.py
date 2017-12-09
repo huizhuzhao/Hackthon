@@ -8,8 +8,8 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
 import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
 
 
 DATA_DIR = os.path.join(os.path.expanduser('~'), 'datasets/test_data/jddjr/salesForecast')
@@ -99,87 +99,65 @@ def generate_ads_by_day(shop_id):
             os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), 
             index=True, index_label='create_dt')
 
-
-def get_sale_amt_seq(shop_id_list, seq_len):
-    """
-    sale_amt: [num_shops, num_days]
-    valid_X: [num_shops, seq_len] (sale_amt[:, -90-seq_len:-90])
-    valid_Y: [num_shops, 90] (sale_amt[:, -90:])
-    train_X: [num_shops * (271 - 90 - seq_len -1), seq_len, 1]
-    train_Y: [num_shops * (271 - 90 - seq_len -1), 1]
-    """
+def get_sale_amt_by_day(shop_id_list):
     sale_amt_matrix = []
     for id in shop_id_list:
         filename = os.path.join(DATA_DIR, 'sale_amt_by_day', 'shop_{0}.csv'.format(id))
         df = pd.read_csv(filename)
+        df.index = df['ord_dt'].tolist()
+        #df = df.drop(['2016-11-11'])
         sale_amt = df['sale_amt'].tolist()
         sale_amt_matrix.append(sale_amt)
 
     sale_amt = np.asarray(sale_amt_matrix, dtype=np.float32)
-    train_XY = sale_amt[:, :-90]
-    valid_Y = sale_amt[:, -90:]
-    valid_X = sale_amt[:, -90-seq_len:-90]
-    valid_X = valid_X[:, :, np.newaxis]
-    print('train_XY.shape: {0}'.format(train_XY.shape))
-    print('valid_X.shape: {0}'.format(valid_X.shape))
-    print('valid_Y.shape: {0}'.format(valid_Y.shape))
 
-    train_X = []
-    train_Y = []
-    total_seq_len = train_XY.shape[1]
-    for ii in range(total_seq_len - seq_len - 1):
-        s, e = ii, ii + seq_len
-        one_seq = train_XY[:, s:e]
-        one_y = train_XY[:, e: e+1]
-        train_X.append(one_seq)
-        train_Y.append(one_y)
-
-    train_X = np.concatenate(train_X, axis=0)
-    train_Y = np.concatenate(train_Y, axis=0)
-    train_X = train_X[:, :, np.newaxis]
-
-    return {'train_X': train_X, 'train_Y': train_Y, 'valid_X': valid_X, 'valid_Y': valid_Y}
-        
-
-def build_model(seq_len):
-    import tensorflow.contrib.keras as keras
-    from tensorflow.contrib.keras import optimizers
-    from tensorflow.contrib.keras import layers
-
-    RNN = keras.layers.LSTM
-    LAYERS = 3
-    model = keras.models.Sequential()
-    for _ in range(LAYERS):
-        model.add(RNN(100, input_shape=(seq_len, 1), return_sequences=True))
-
-    model.add(RNN(100, return_sequences=False))
-    model.add(layers.Dense(1, activation='linear'))
-
-    optimizer = optimizers.Adam(lr=0.01)
-    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mae'])
-
-    print('model input shape: {0}'.format(model.input_shape))
-    print('model output shape: {0}'.format(model.output_shape))
-    return model
+    return sale_amt
 
 
-def evaluate(model, valid_X, valid_Y, seq_len):
-    input_X = valid_X
-    pred_Y = []
-    for ii in range(90):
-        pred_y = model.predict(input_X)
-        pred_Y.append(pred_y)
-        pred_y = pred_y[:, :, np.newaxis]
-        input_X = np.concatenate([input_X[:, 1:], pred_y], axis=1)
+class DataTransform(object):
+    def __init__(self, sale_amt, seq_len):
+        self.sale_amt = sale_amt
+        self.seq_len = seq_len
 
-    pred_Y = np.concatenate(pred_Y, axis=1)
-    print('pred_Y.shape: {0}'.format(pred_Y.shape))
-    print('valid_Y.shape: {0}'.format(valid_Y.shape))
-    pred_Y = np.sum(pred_Y, axis=1)
-    valid_Y = np.sum(valid_Y, axis=1)
-    score = np.sum(np.abs(pred_Y - valid_Y)) / np.sum(valid_Y)
-    print('score: {0}'.format(score))
-    return score
+    def scale(self):
+        train_XY = self.sale_amt[:, :-90]
+        valid_Y = self.sale_amt[:, -90:]
+
+        self.scaler = StandardScaler()
+        self.scaler.fit(train_XY.T)
+        train_XY = self.scaler.transform(train_XY.T).T
+        #valid_Y = self.scaler.transform(valid_Y.T).T
+        valid_X = train_XY[:, -90-self.seq_len:-90]
+        valid_X = valid_X[:, :, np.newaxis]
+
+        self.train_XY = train_XY
+        self.valid_X = valid_X
+        self.valid_Y = valid_Y
+        print('self.train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
+        print('self.valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
+        print('self.valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
+
+    def get_train_data(self):
+        train_XY = self.train_XY
+        seq_len = self.seq_len
+        train_X = []
+        train_Y = []
+        total_seq_len = train_XY.shape[1]
+        for ii in range(total_seq_len - seq_len - 1):
+            s, e = ii, ii + seq_len
+            one_seq = train_XY[:, s:e]
+            one_y = train_XY[:, e: e+1]
+            train_X.append(one_seq)
+            train_Y.append(one_y)
+
+        train_X = np.concatenate(train_X, axis=0)
+        train_Y = np.concatenate(train_Y, axis=0)
+        train_X = train_X[:, :, np.newaxis]
+        self.train_X = train_X
+        self.train_Y = train_Y
+
+        print('self.train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
+        print('self.train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
 
 
 

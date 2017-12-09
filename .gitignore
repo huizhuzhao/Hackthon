@@ -18,6 +18,7 @@
 
 *.pdf
 *.csv#
+*.csv
 
 *.nt.bz2
 *.tar.gz
