@@ -118,24 +118,28 @@ class DataTransform(object):
     def __init__(self, sale_amt, seq_len):
         self.sale_amt = sale_amt
         self.seq_len = seq_len
+        self.train_XY = sale_amt[:, :-90]
+        self.valid_Y = sale_amt[:, -90:]
+        valid_X = self.train_XY[:, -self.seq_len:]
+        self.valid_X = valid_X[:, :, np.newaxis]
+        print('self.train_XY.shape/max: {0}/{1}'.format(self.train_XY.shape, np.max(self.train_XY)))
+        print('self.valid_X.shape/max: {0}/{1}'.format(self.valid_X.shape, np.max(self.valid_X)))
+        print('self.valid_Y.shape/max: {0}/{1}'.format(self.valid_Y.shape, np.max(self.valid_Y)))
 
     def scale(self):
-        train_XY = self.sale_amt[:, :-90]
-        valid_Y = self.sale_amt[:, -90:]
-
+        train_XY = self.train_XY
         self.scaler = StandardScaler()
         self.scaler.fit(train_XY.T)
         train_XY = self.scaler.transform(train_XY.T).T
         #valid_Y = self.scaler.transform(valid_Y.T).T
-        valid_X = train_XY[:, -90-self.seq_len:-90]
+        valid_X = train_XY[:, -self.seq_len:]
         valid_X = valid_X[:, :, np.newaxis]
 
         self.train_XY = train_XY
         self.valid_X = valid_X
-        self.valid_Y = valid_Y
         print('self.train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
         print('self.valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
-        print('self.valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
+
 
     def get_train_data(self):
         train_XY = self.train_XY
@@ -143,7 +147,9 @@ class DataTransform(object):
         train_X = []
         train_Y = []
         total_seq_len = train_XY.shape[1]
-        for ii in range(total_seq_len - seq_len - 1):
+        slides = total_seq_len - seq_len - 1
+        print('slides: {0}'.format(slides))
+        for ii in range(slides):
             s, e = ii, ii + seq_len
             one_seq = train_XY[:, s:e]
             one_y = train_XY[:, e: e+1]
