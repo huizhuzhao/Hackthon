@@ -66,6 +66,11 @@ def main():
 
     model = build_model(seq_len)
     scores = []
+
+    log_dir = os.path.join(utils.DATA_DIR, 'logs')
+    callbacks = utils.get_callbacks(log_dir)
+    model.fit(datat.train_X, datat.train_Y, batch_size=batch_size, epochs=epochs, callbacks=callbacks)
+    """
     for ii in range(epochs):
         score = evaluate(model, datat.valid_X, datat.valid_Y, seq_len, datat.scaler)
         scores.append(score)
@@ -73,6 +78,7 @@ def main():
 
     df_metrics = pd.DataFrame({'epochs': range(epochs), 'scores': scores})
     df_metrics.to_csv(os.path.join(utils.DATA_DIR, 'logger.csv'))
+    """
 
 
 

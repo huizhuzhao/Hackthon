@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
+from tensorflow.contrib.keras import callbacks
 
 
 DATA_DIR = os.path.join(os.path.expanduser('~'), 'datasets/test_data/jddjr/salesForecast')
@@ -169,36 +170,14 @@ class DataTransform(object):
         print('self.train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
 
 
+def get_callbacks(log_dir):
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-def main():
-    month_ends = ['2016-06-30', '2016-07-31', '2016-08-31', '2016-09-30', 
-            '2016-10-31', '2016-11-30', '2016-12-31', '2017-01-31',
-            '2017-02-28', '2017-03-31', '2017-04-30']
+    weights_filename = os.path.join(log_dir, 'weights_{epoch_02d}_{loss_.2f}.hdf5')
+    ckpt = callbacks.ModelCheckpoint(weights_filename, monitor='loss', save_best_only=True)
 
-    num_shops = 1000
+    logger_filename = os.path.join(log_dir, 'logger.csv')
+    csv_logger = callbacks.CSVLogger(logger_filename)
 
-    #generate_csv_by_shop()
-    #generate_ads_by_day(shop_id)
-    #generate_sale_amt_by_day(range(1, 3001))
-    seq_len = 10
-    BATCH_SIZE = 32
-    epochs = 40
-    data = get_sale_amt_seq(range(1, num_shops), seq_len=seq_len)
-  
-    model = build_model(seq_len)
-    scores = []
-    for ii in range(epochs):
-        score = evaluate(model, data['valid_X'], data['valid_Y'], seq_len)
-        scores.append(score)
-        model.fit(data['train_X'], data['train_Y'], batch_size=BATCH_SIZE, epochs=1)
-
-    df_metrics = pd.DataFrame({'epochs': range(epochs), 'scores': scores})
-    df_metrics.to_csv(os.path.join(DATA_DIR, 'logger.csv'))
-
-
-
-    
-
-
-if __name__ == '__main__':
-    main()
+    return [ckpt, csv_logger]
