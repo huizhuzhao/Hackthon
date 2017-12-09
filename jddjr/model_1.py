@@ -60,7 +60,7 @@ def main():
     seq_len = 10
     batch_size = 32
     epochs = 20
-    sale_amt = utils.get_sale_amt_by_day(range(1, 300))
+    sale_amt = utils.get_sale_amt_by_day(range(1, 3001))
     datat = utils.DataTransform(sale_amt, seq_len)
     datat.scale()
     datat.get_train_data()
