@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DATA_DIR = '/home/xtalpi/datasets/test_data/jddjr/salesForecast'
+import tensorflow as tf
+
+
+DATA_DIR = os.path.join(os.path.expanduser('~'), 'datasets/test_data/jddjr/salesForecast')
 NAME = ['comment', 'order', 'ads', 'product', 'sales_sum']
 DATE = {'comment': 'create_dt', 
         'order': 'ord_dt', 
@@ -46,7 +49,7 @@ def generate_sale_amt_by_day(shop_id):
     因为商店每天的销售额数据会有多条, 本函数会将某个商店 (shop_id) 的销售额数据 (sale_amt) 
     依据 天 (2016-08-03 至 2017-04-03) 进行求和，将结果写入 sale_amt_by_day/shop_i.csv 中
     """
-    output_dir = os.path.join(DATE_DIR, 'sale_amt_by_day')
+    output_dir = os.path.join(DATA_DIR, 'sale_amt_by_day')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -96,6 +99,48 @@ def generate_ads_by_day(shop_id):
             index=True, index_label='create_dt')
 
 
+def get_sale_amt_seq(shop_id_list, seq_len):
+    sale_amt_matrix = []
+    for id in shop_id_list:
+        filename = os.path.join(DATA_DIR, 'sale_amt_by_day', 'shop_{0}.csv'.format(id))
+        df = pd.read_csv(filename)
+        sale_amt = df['sale_amt'].tolist()
+        sale_amt_matrix.append(sale_amt)
+
+    sale_amt = np.asarray(sale_amt_matrix, dtype=np.float32)
+    sale_amt_seq = []
+    y_true = []
+    total_seq_len = sale_amt.shape[1]
+    for ii in range(total_seq_len - seq_len - 1):
+        one_seq = sale_amt[:, ii:ii+seq_len]
+        one_y = sale_amt[:, ii+seq_len:ii+seq_len+1]
+        sale_amt_seq.append(one_seq)
+        y_true.append(one_y)
+
+    sale_amt_seq = np.concatenate(sale_amt_seq, axis=0)
+    y_true = np.concatenate(y_true, axis=0)
+    sale_amt_seq = sale_amt_seq[:, :, np.newaxis]
+
+    return sale_amt_seq, y_true
+        
+
+def build_model(seq_len):
+    import tensorflow.contrib.keras as keras
+    RNN = keras.layers.LSTM
+    LAYERS = 3
+    model = keras.models.Sequential()
+    for _ in range(LAYERS):
+        model.add(RNN(100, input_shape=(seq_len, 1), return_sequences=True))
+
+    model.add(RNN(1, return_sequences=False))
+
+    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mae'])
+
+    print('model input shape: {0}'.format(model.input_shape))
+    print('model output shape: {0}'.format(model.output_shape))
+    return model
+
+
 
 def main():
     shop_id = '1'
@@ -105,12 +150,16 @@ def main():
 
 
     #generate_csv_by_shop()
-    """
-    df_comment = pd.read_csv(os.path.join(data_dir, 'comment/shop_{0}.csv'.format(shop_id)), parse_dates=[0])
-    df_comment = df_comment.sort_values(by='create_dt')
-    print(df_comment.head())
-    """
-    generate_ads_by_day(shop_id)
+    #generate_ads_by_day(shop_id)
+    seq_len = 10
+    BATCH_SIZE = 32
+    sale_amt_seq, y_true = get_sale_amt_seq(range(1, 10), seq_len=10)
+    print(sale_amt_seq.shape, y_true.shape)
+    model = build_model(seq_len)
+    model.fit(sale_amt_seq, y_true, batch_size=BATCH_SIZE, epochs=10, validation_split=0.2)
+
+    y_pred = model.predict(sale_amt_seq)
+    print(y_pred.shape)
 
 
 
