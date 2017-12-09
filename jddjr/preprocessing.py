@@ -67,6 +67,7 @@ def generate_sale_amt_by_day(shop_id_list):
 
         df_res = pd.DataFrame({'sale_amt': sale_amt, 'ord_dt': date})
         df_res.to_csv(os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), index=False)
+        print("Finished generating salt_amt_by_day: {0}/{1}".format(shop_id, len(shop_id_list)))
 
 
 def generate_ads_by_day(shop_id):
@@ -187,26 +188,25 @@ def main():
             '2016-10-31', '2016-11-30', '2016-12-31', '2017-01-31',
             '2017-02-28', '2017-03-31', '2017-04-30']
 
-    num_shops = 100
+    num_shops = 1000
 
     #generate_csv_by_shop()
     #generate_ads_by_day(shop_id)
-    #generate_sale_amt_by_day(range(1, 100))
+    #generate_sale_amt_by_day(range(1, 3001))
     seq_len = 10
     BATCH_SIZE = 32
-    epochs = 10
-    data = get_sale_amt_seq(range(1, 100), seq_len=seq_len)
-
+    epochs = 40
+    data = get_sale_amt_seq(range(1, num_shops), seq_len=seq_len)
+  
     model = build_model(seq_len)
     scores = []
     for ii in range(epochs):
         score = evaluate(model, data['valid_X'], data['valid_Y'], seq_len)
         scores.append(score)
-        model.fit(data['train_X'], data['train_Y'], batch_size=BATCH_SIZE, epochs=2, validation_split=0.2)
+        model.fit(data['train_X'], data['train_Y'], batch_size=BATCH_SIZE, epochs=1)
 
     df_metrics = pd.DataFrame({'epochs': range(epochs), 'scores': scores})
     df_metrics.to_csv(os.path.join(DATA_DIR, 'logger.csv'))
-
 
 
 
