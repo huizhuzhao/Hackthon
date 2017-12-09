@@ -44,7 +44,7 @@ def generate_csv_by_shop():
             df_sub.to_csv(filename, index=False)
 
 
-def generate_sale_amt_by_day(shop_id):
+def generate_sale_amt_by_day(shop_id_list):
     """
     因为商店每天的销售额数据会有多条, 本函数会将某个商店 (shop_id) 的销售额数据 (sale_amt) 
     依据 天 (2016-08-03 至 2017-04-03) 进行求和，将结果写入 sale_amt_by_day/shop_i.csv 中
@@ -53,20 +53,20 @@ def generate_sale_amt_by_day(shop_id):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    order_file = os.path.join(DATA_DIR, 'order/shop_{0}.csv'.format(shop_id))
-    df_order = pd.read_csv(order_file, parse_dates=[0])
-    df_order.index = df_order['ord_dt'].tolist()
-    df_order = df_order.sort_values(by='ord_dt')
+    for shop_id in shop_id_list:
+        order_file = os.path.join(DATA_DIR, 'order/shop_{0}.csv'.format(shop_id))
+        df_order = pd.read_csv(order_file, parse_dates=[0])
+        df_order.index = df_order['ord_dt'].tolist()
+        df_order = df_order.sort_values(by='ord_dt')
 
-    date = pd.date_range('2016-08-03', '2017-04-30', freq='D')
+        date = pd.date_range(START, END, freq='D')
+        sale_amt = []
+        for d in date:
+            df_temp = df_order[df_order['ord_dt'] == d]
+            sale_amt.append(df_temp['sale_amt'].sum())
 
-    sale_amt = []
-    for d in date:
-        df_temp = df_order[df_order['ord_dt'] == d]
-        sale_amt.append(df_temp['sale_amt'].sum())
-
-    df_res = pd.DataFrame({'sale_amt': sale_amt, 'ord_dt': date})
-    df_res.to_csv(os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), index=False)
+        df_res = pd.DataFrame({'sale_amt': sale_amt, 'ord_dt': date})
+        df_res.to_csv(os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), index=False)
 
 
 def generate_ads_by_day(shop_id):
@@ -100,6 +100,13 @@ def generate_ads_by_day(shop_id):
 
 
 def get_sale_amt_seq(shop_id_list, seq_len):
+    """
+    sale_amt: [num_shops, num_days]
+    valid_X: [num_shops, seq_len] (sale_amt[:, -90-seq_len:-90])
+    valid_Y: [num_shops, 90] (sale_amt[:, -90:])
+    train_X: [num_shops * (271 - 90 - seq_len -1), seq_len, 1]
+    train_Y: [num_shops * (271 - 90 - seq_len -1), 1]
+    """
     sale_amt_matrix = []
     for id in shop_id_list:
         filename = os.path.join(DATA_DIR, 'sale_amt_by_day', 'shop_{0}.csv'.format(id))
@@ -108,58 +115,97 @@ def get_sale_amt_seq(shop_id_list, seq_len):
         sale_amt_matrix.append(sale_amt)
 
     sale_amt = np.asarray(sale_amt_matrix, dtype=np.float32)
-    sale_amt_seq = []
-    y_true = []
-    total_seq_len = sale_amt.shape[1]
+    train_XY = sale_amt[:, :-90]
+    valid_Y = sale_amt[:, -90:]
+    valid_X = sale_amt[:, -90-seq_len:-90]
+    valid_X = valid_X[:, :, np.newaxis]
+    print('train_XY.shape: {0}'.format(train_XY.shape))
+    print('valid_X.shape: {0}'.format(valid_X.shape))
+    print('valid_Y.shape: {0}'.format(valid_Y.shape))
+
+    train_X = []
+    train_Y = []
+    total_seq_len = train_XY.shape[1]
     for ii in range(total_seq_len - seq_len - 1):
-        one_seq = sale_amt[:, ii:ii+seq_len]
-        one_y = sale_amt[:, ii+seq_len:ii+seq_len+1]
-        sale_amt_seq.append(one_seq)
-        y_true.append(one_y)
+        s, e = ii, ii + seq_len
+        one_seq = train_XY[:, s:e]
+        one_y = train_XY[:, e: e+1]
+        train_X.append(one_seq)
+        train_Y.append(one_y)
 
-    sale_amt_seq = np.concatenate(sale_amt_seq, axis=0)
-    y_true = np.concatenate(y_true, axis=0)
-    sale_amt_seq = sale_amt_seq[:, :, np.newaxis]
+    train_X = np.concatenate(train_X, axis=0)
+    train_Y = np.concatenate(train_Y, axis=0)
+    train_X = train_X[:, :, np.newaxis]
 
-    return sale_amt_seq, y_true
+    return {'train_X': train_X, 'train_Y': train_Y, 'valid_X': valid_X, 'valid_Y': valid_Y}
         
 
 def build_model(seq_len):
     import tensorflow.contrib.keras as keras
+    from tensorflow.contrib.keras import optimizers
+    from tensorflow.contrib.keras import layers
+
     RNN = keras.layers.LSTM
     LAYERS = 3
     model = keras.models.Sequential()
     for _ in range(LAYERS):
         model.add(RNN(100, input_shape=(seq_len, 1), return_sequences=True))
 
-    model.add(RNN(1, return_sequences=False))
+    model.add(RNN(100, return_sequences=False))
+    model.add(layers.Dense(1, activation='linear'))
 
-    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mae'])
+    optimizer = optimizers.Adam(lr=0.01)
+    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mae'])
 
     print('model input shape: {0}'.format(model.input_shape))
     print('model output shape: {0}'.format(model.output_shape))
     return model
 
 
+def evaluate(model, valid_X, valid_Y, seq_len):
+    input_X = valid_X
+    pred_Y = []
+    for ii in range(90):
+        pred_y = model.predict(input_X)
+        pred_Y.append(pred_y)
+        pred_y = pred_y[:, :, np.newaxis]
+        input_X = np.concatenate([input_X[:, 1:], pred_y], axis=1)
+
+    pred_Y = np.concatenate(pred_Y, axis=1)
+    print('pred_Y.shape: {0}'.format(pred_Y.shape))
+    print('valid_Y.shape: {0}'.format(valid_Y.shape))
+    pred_Y = np.sum(pred_Y, axis=1)
+    valid_Y = np.sum(valid_Y, axis=1)
+    score = np.sum(np.abs(pred_Y - valid_Y)) / np.sum(valid_Y)
+    print('score: {0}'.format(score))
+    return score
+
+
 
 def main():
-    shop_id = '1'
     month_ends = ['2016-06-30', '2016-07-31', '2016-08-31', '2016-09-30', 
             '2016-10-31', '2016-11-30', '2016-12-31', '2017-01-31',
             '2017-02-28', '2017-03-31', '2017-04-30']
 
+    num_shops = 100
 
     #generate_csv_by_shop()
     #generate_ads_by_day(shop_id)
+    #generate_sale_amt_by_day(range(1, 100))
     seq_len = 10
     BATCH_SIZE = 32
-    sale_amt_seq, y_true = get_sale_amt_seq(range(1, 10), seq_len=10)
-    print(sale_amt_seq.shape, y_true.shape)
-    model = build_model(seq_len)
-    model.fit(sale_amt_seq, y_true, batch_size=BATCH_SIZE, epochs=10, validation_split=0.2)
+    epochs = 10
+    data = get_sale_amt_seq(range(1, 100), seq_len=seq_len)
 
-    y_pred = model.predict(sale_amt_seq)
-    print(y_pred.shape)
+    model = build_model(seq_len)
+    scores = []
+    for ii in range(epochs):
+        score = evaluate(model, data['valid_X'], data['valid_Y'], seq_len)
+        scores.append(score)
+        model.fit(data['train_X'], data['train_Y'], batch_size=BATCH_SIZE, epochs=2, validation_split=0.2)
+
+    df_metrics = pd.DataFrame({'epochs': range(epochs), 'scores': scores})
+    df_metrics.to_csv(os.path.join(DATA_DIR, 'logger.csv'))
 
 
 
