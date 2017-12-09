@@ -2,6 +2,7 @@
 # encoding: utf-8
 # Created Time: 六 12/ 9 21:57:07 2017
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -59,7 +60,7 @@ def main():
     seq_len = 10
     batch_size = 32
     epochs = 20
-    sale_amt = utils.get_sale_amt_by_day(range(1, 300))
+    sale_amt = utils.get_sale_amt_by_day(range(1, 3001))
     datat = utils.DataTransform(sale_amt, seq_len)
     datat.scale()
     datat.get_train_data()
