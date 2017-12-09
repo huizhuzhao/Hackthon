@@ -140,6 +140,9 @@ class DataTransform(object):
         print('self.train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
         print('self.valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
 
+    def get_seq2seq_data(self):
+        self.train_X = self.train_XY
+        self.train_Y = self.valid_Y
 
     def get_train_data(self):
         train_XY = self.train_XY
