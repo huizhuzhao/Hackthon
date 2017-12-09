@@ -2,6 +2,7 @@
 # encoding: utf-8
 # Created Time: 六 12/ 9 21:57:07 2017
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
