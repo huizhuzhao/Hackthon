@@ -59,9 +59,9 @@ def evaluate(model, valid_X, valid_Y, seq_len, scaler=None):
 
 def main():
     seq_len = 10
-    batch_size = 32
+    batch_size = 64
     epochs = 50
-    sale_amt = utils.get_sale_amt_by_day(range(1, 30))
+    sale_amt = utils.get_sale_amt_by_day(range(1, 300))
 
     datat = utils.get_train_data(sale_amt, seq_len)
 

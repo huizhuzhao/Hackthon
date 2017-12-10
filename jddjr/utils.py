@@ -156,6 +156,16 @@ def get_train_data(sale_amt, seq_len):
     return datat
 
 
+def get_seq2seq_data(sale_amt, input_seq_len, output_seq_len):
+    train_XY = sale_amt[:, :-output_seq_len]
+    valid_X = train_XY[:, -input_seq_len:]
+    valid_Y = sale_amt[:, -output_seq_len:]
+
+    print('train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
+    print('valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
+    print('valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
+
+
 
 class DataTransform(object):
     def __init__(self, sale_amt, seq_len):
