@@ -19,7 +19,7 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
     RNN = layers.LSTM
     encoder_layers = 1
     decoder_layers = 2
-    hidden_dim = 100
+    hidden_dim = 200
     model = models.Sequential()
 
     model.add(layers.TimeDistributed(layers.Dense(100, activation='relu'), 
@@ -71,9 +71,15 @@ def main():
     input_seq_len = 90
     output_seq_len = 30
     batch_size = 64
-    epochs = 50
+    epochs = 100
 
-    features = utils.get_features(range(1, 3001), 'features_v2')
+    # step 1: 
+    # utils.generate_csv_by_shop()
+
+    # step 2: 
+    # utils.generate_features_by_day(range(1, 3001))
+
+    features = utils.get_features(range(1, 3001), 'features')
     print(features.shape)
     datat = utils.get_seq2seq_data_2(features, input_seq_len, output_seq_len, interval=2)
     num_samples = datat.train_X.shape[0]
@@ -86,7 +92,6 @@ def main():
 
     callbacks = utils.get_callbacks(log_dir)
 
-    #model.load_weights(os.path.join(log_dir, 'weights_07_7208713.48.hdf5'))
     print(model.summary())
     for ii in range(epochs):
         model.fit(datat.train_X, datat.train_Y, 
@@ -94,9 +99,6 @@ def main():
                 callbacks=callbacks,
                 initial_epoch=ii)
         evaluate(model, datat)
-    """
-    #utils.generate_features_by_day(range(300, 3001), 'features_v2')
-    """
 
 
 
