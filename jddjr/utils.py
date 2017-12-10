@@ -45,12 +45,12 @@ def generate_csv_by_shop():
             df_sub.to_csv(filename, index=False)
 
 
-def generate_features_by_day(shop_id_list):
+def generate_features_by_day(shop_id_list, dir_name='features'):
     """
     因为商店每天的销售额数据会有多条, 本函数会将某个商店 (shop_id) 的销售额数据 (sale_amt) 
     依据 天 (2016-08-03 至 2017-04-03) 进行求和，将结果写入 sale_amt_by_day/shop_i.csv 中
     """
-    output_dir = os.path.join(DATA_DIR, 'features')
+    output_dir = os.path.join(DATA_DIR, dir_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -83,15 +83,18 @@ def generate_features_by_day(shop_id_list):
 
         date = pd.date_range(START, END, freq='D')
         sale_amt = []
-        ads_charge = []
-        ads_consume = []
-        for d in date:
+        ads_charge = np.zeros((len(date), ), dtype=np.float32)
+        ads_consume = np.zeros((len(date), ), dtype=np.float32)
+        ads_lag = 30
+        for ii, d in enumerate(date):
             df_order_tmp = df_order[df_order['ord_dt'] == d]
             df_ads_tmp = df_ads[df_ads['create_dt'] == d]
 
             sale_amt.append(df_order_tmp['sale_amt'].sum())
-            ads_charge.append(df_ads_tmp['charge'].sum())
-            ads_consume.append(df_ads_tmp['consume'].sum())
+            ads_charge[ii:ii+ads_lag] += df_ads_tmp['charge'].sum()
+            ads_consume[ii:ii+ads_lag] += df_ads_tmp['consume'].sum()
+            #ads_charge.append(df_ads_tmp['charge'].sum())
+            #ads_consume.append(df_ads_tmp['consume'].sum())
 
         day_feat = get_day_feature(date)
         features = day_feat
@@ -101,18 +104,19 @@ def generate_features_by_day(shop_id_list):
                          'ads_consume': ads_consume})
         df_res = pd.DataFrame(features)
 
-        df_res.to_csv(os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), index=False)
-        print("Finished generating features_by_day: {0}/{1}".format(shop_id, len(shop_id_list)))
+        output_file = os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id))
+        df_res.to_csv(output_file, index=False)
+        print("Finished generating {0}: {1}/{2}".format(output_file, shop_id, len(shop_id_list)))
 
 
-def get_features(shop_id_list):
+def get_features(shop_id_list, dir_name='features'):
     sale_amt_matrix = []
     features = []
     cols = ['sale_amt', 'ads_consume', 
             'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 
     for id in shop_id_list:
-        filename = os.path.join(DATA_DIR, 'features', 'shop_{0}.csv'.format(id))
+        filename = os.path.join(DATA_DIR, dir_name, 'shop_{0}.csv'.format(id))
         df = pd.read_csv(filename)
         df['ord_dt'] = pd.to_datetime(df['ord_dt'])
         #df.index = df['ord_dt'].tolist()

@@ -18,12 +18,12 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
 
     RNN = layers.LSTM
     encoder_layers = 1
-    decoder_layers = 1
+    decoder_layers = 2
     hidden_dim = 100
     model = models.Sequential()
 
-    model.add(layers.TimeDistributed(layers.Dense(100, activation='tanh'), input_shape=(input_seq_len, 9)))
-
+    model.add(layers.TimeDistributed(layers.Dense(100, activation='relu'), 
+        input_shape=(input_seq_len, 9)))
     for _ in range(encoder_layers):
         model.add(RNN(hidden_dim, return_sequences=True))
     model.add(RNN(hidden_dim, return_sequences=False))
@@ -34,7 +34,7 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
     model.add(layers.TimeDistributed(layers.Dense(1)))
 
     decay = 1. / num_samples
-    optimizer = optimizers.Adam(lr=0.001, decay=decay)
+    optimizer = optimizers.Adam(lr=0.3, decay=decay)
 
     def score_func(y_true, y_pred):
         y_true = tf.reduce_sum(y_true, axis=1)
@@ -55,14 +55,13 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
 
 
 
-
 def main():
     input_seq_len = 90
     output_seq_len = 30
     batch_size = 64
     epochs = 50
 
-    features = utils.get_features(range(1, 20))
+    features = utils.get_features(range(1, 300), 'features_v2')
     datat = utils.get_seq2seq_data(features, input_seq_len, output_seq_len)
     num_samples = datat.train_X.shape[0]
     print('num_samples: {0}'.format(num_samples))
@@ -74,13 +73,13 @@ def main():
 
     callbacks = utils.get_callbacks(log_dir)
 
-    #model.load_weights(os.path.join(log_dir, 'weights_24_7711383.04.hdf5'))
+    #model.load_weights(os.path.join(log_dir, 'weights_07_7208713.48.hdf5'))
     print(model.summary())
     model.fit(datat.train_X, datat.train_Y, 
             batch_size=batch_size, epochs=epochs, 
             callbacks=callbacks,
             validation_data=(datat.valid_X, datat.valid_Y))
-    #utils.generate_features_by_day(range(1, 3001))
+    #utils.generate_features_by_day(range(300, 3001), 'features_v2')
 
 
 
