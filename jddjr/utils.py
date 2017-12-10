@@ -208,60 +208,52 @@ def get_seq2seq_data(features, input_seq_len, output_seq_len):
 
     return datat
 
+def resample_date(start_date, end_date, gap, shop_id=None): 
+    """
+    针对order数据，提供开始日期，结束日期和采样周期，将自动在时间区间采样，
+    采样周期内的sale值做sum处理变成一个点
+    """
+    start_sec = time.mktime(time.strptime(start_date,'%Y-%m-%d'))
+    end_sec = time.mktime(time.strptime(end_date,'%Y-%m-%d'))
+    period = int((end_sec - start_sec)/(24*60*60))+1
 
-class DataTransform(object):
-    def __init__(self, sale_amt, seq_len):
-        self.sale_amt = sale_amt
-        self.seq_len = seq_len
-        self.train_XY = sale_amt[:, :-90]
-        self.valid_Y = sale_amt[:, -90:]
-        valid_X = self.train_XY[:, -self.seq_len:]
-        self.valid_X = valid_X[:, :, np.newaxis]
-        print('self.train_XY.shape/max: {0}/{1}'.format(self.train_XY.shape, np.max(self.train_XY)))
-        print('self.valid_X.shape/max: {0}/{1}'.format(self.valid_X.shape, np.max(self.valid_X)))
-        print('self.valid_Y.shape/max: {0}/{1}'.format(self.valid_Y.shape, np.max(self.valid_Y)))
+    # sift order models
+    if shop_id is not None:
+        order_sift = order[(order['ord_dt']>=start_date) & (order.ord_dt<=end_date)&(order.shop_id==shop_id)].loc[:, ['ord_dt', 'sale_amt', 'rtn_amt', 'shop_id']]
+    else:
+        order_sift = order[(order['ord_dt']>=start_date) & (order.ord_dt<=end_date)].loc[:, ['ord_dt', 'sale_amt', 'rtn_amt', 'shop_id']]
+    order_sift = order_sift.groupby(['ord_dt']).sum()
+    # sales - return money
+    sales = order_sift.sale_amt - order_sift.rtn_amt
+    sales_amt = pd.DataFrame({'sales': sales.values}, index=order_sift.index.values)
+    date_range = pd.date_range(start_date, periods=period, feq='D')
+    date_range = date_range.strftime('%Y-%m-%d')
+    time_df = pd.DataFrame(index=date_range )
 
-    def scale(self):
-        train_XY = self.train_XY
-        self.scaler = StandardScaler()
-        self.scaler.fit(train_XY.T)
-        train_XY = self.scaler.transform(train_XY.T).T
-        #valid_Y = self.scaler.transform(valid_Y.T).T
-        valid_X = train_XY[:, -self.seq_len:]
-        valid_X = valid_X[:, :, np.newaxis]
+    # combine two dataframes and get the sum sale dataframe
+    merge_df = pd.concat([sales_amt, time_df], axis=1).fillna(0)
+    merge_df['group_index'] = gen_group_index(period, gap)
+    merge_df = merge_df.groupby(['group_index']).sum()
 
-        self.train_XY = train_XY
-        self.valid_X = valid_X
-        print('self.train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
-        print('self.valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
+    # generate new date index
+    freq = '%sD' % gap
+    period_index = pd.date_range(start_date, end_date, freq=freq)
+    merge_df['period_index'] = period_index
+    return merge_df
 
-    def get_seq2seq_data(self):
-        self.train_X = self.train_XY
-        self.train_Y = self.valid_Y
+# 定义产生分组索引的函数，比如我们要计算的周期是 20 天，则按照日期，20 个交易日一组
+def gen_group_index(total, group_len):
+    """ generate an item group index array
 
-    def get_train_data(self):
-        train_XY = self.train_XY
-        seq_len = self.seq_len
-        train_X = []
-        train_Y = []
-        total_seq_len = train_XY.shape[1]
-        slides = total_seq_len - seq_len - 1
-        print('slides: {0}'.format(slides))
-        for ii in range(slides):
-            s, e = ii, ii + seq_len
-            one_seq = train_XY[:, s:e]
-            one_y = train_XY[:, e: e+1]
-            train_X.append(one_seq)
-            train_Y.append(one_y)
+    suppose total = 10, unitlen = 2, then we will return array [0 0 1 1 2 2 3 3 4 4]
+    """
 
-        train_X = np.concatenate(train_X, axis=0)
-        train_Y = np.concatenate(train_Y, axis=0)
-        train_X = train_X[:, :, np.newaxis]
-        self.train_X = train_X
-        self.train_Y = train_Y
-
-        print('self.train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
-        print('self.train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
+    group_count = total / group_len
+    group_index = np.arange(total)
+    for i in range(group_count):
+        group_index[i * group_len: (i + 1) * group_len] = i
+    group_index[(i + 1) * group_len : total] = i + 1
+    return group_index.tolist()
 
 
 def get_callbacks(log_dir):
