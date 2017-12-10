@@ -45,77 +45,88 @@ def generate_csv_by_shop():
             df_sub.to_csv(filename, index=False)
 
 
-def generate_sale_amt_by_day(shop_id_list):
+def generate_features_by_day(shop_id_list):
     """
     因为商店每天的销售额数据会有多条, 本函数会将某个商店 (shop_id) 的销售额数据 (sale_amt) 
     依据 天 (2016-08-03 至 2017-04-03) 进行求和，将结果写入 sale_amt_by_day/shop_i.csv 中
     """
-    output_dir = os.path.join(DATA_DIR, 'sale_amt_by_day')
+    output_dir = os.path.join(DATA_DIR, 'features')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
+    def get_day_feature(date):
+        df = pd.DataFrame({'ord_dt': date})
+        df['ord_dt'] = pd.to_datetime(df['ord_dt'])
+        feat = df['ord_dt'].dt.dayofweek
+        feat = np.eye(7)[feat].astype(np.int32)
+        d = {}
+        for ii in range(7):
+            d['day_{0}'.format(ii)] = feat[:, ii].tolist()
+
+        return d
+
+    def sort_df(filename, name):
+        dt_col = DATE[name]
+        df = pd.read_csv(filename, parse_dates=[0])
+        df[dt_col] = pd.to_datetime(df[dt_col])
+        df = df.sort_values(by=dt_col)
+
+        return df
+
 
     for shop_id in shop_id_list:
         order_file = os.path.join(DATA_DIR, 'order/shop_{0}.csv'.format(shop_id))
-        df_order = pd.read_csv(order_file, parse_dates=[0])
-        df_order.index = df_order['ord_dt'].tolist()
-        df_order = df_order.sort_values(by='ord_dt')
+        ads_file = os.path.join(DATA_DIR, 'ads/shop_{0}.csv'.format(shop_id))
+
+        df_order = sort_df(order_file, 'order')
+        df_ads = sort_df(ads_file, 'ads')
 
         date = pd.date_range(START, END, freq='D')
         sale_amt = []
+        ads_charge = []
+        ads_consume = []
         for d in date:
-            df_temp = df_order[df_order['ord_dt'] == d]
-            sale_amt.append(df_temp['sale_amt'].sum())
+            df_order_tmp = df_order[df_order['ord_dt'] == d]
+            df_ads_tmp = df_ads[df_ads['create_dt'] == d]
 
-        df_res = pd.DataFrame({'sale_amt': sale_amt, 'ord_dt': date})
+            sale_amt.append(df_order_tmp['sale_amt'].sum())
+            ads_charge.append(df_ads_tmp['charge'].sum())
+            ads_consume.append(df_ads_tmp['consume'].sum())
+
+        day_feat = get_day_feature(date)
+        features = day_feat
+        features.update({'sale_amt': sale_amt,
+                         'ord_dt': date,
+                         'ads_charge': ads_charge,
+                         'ads_consume': ads_consume})
+        df_res = pd.DataFrame(features)
+
         df_res.to_csv(os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), index=False)
-        print("Finished generating salt_amt_by_day: {0}/{1}".format(shop_id, len(shop_id_list)))
+        print("Finished generating features_by_day: {0}/{1}".format(shop_id, len(shop_id_list)))
 
 
-def generate_ads_by_day(shop_id):
-    """
-    将商店在广告方面的数据 (charge/consume) 按天 (START, END) 进行整理
-    TODO: 将每一次 consume 额度在该月内进行平均，或者在接下来一月内进行平均
-    """
-    date = pd.date_range(START, END, freq='D')
-    df_ads_by_day = pd.DataFrame({'consume': [0.] * len(date),
-                                  'charge': [0.] * len(date)}, 
-                                  index=date)
-    print(df_ads_by_day.head())
-
-    df_ads = pd.read_csv(
-            os.path.join(DATA_DIR, 'ads/shop_{0}.csv'.format(shop_id)), parse_dates=[0])
-    df_ads.index = df_ads['create_dt'].tolist()
-
-    for d in df_ads.index.tolist():
-        consume = df_ads.loc[d]['consume']
-        charge = df_ads.loc[d]['charge']
-        df_ads_by_day.loc[d]['consume'] = consume
-        df_ads_by_day.loc[d]['charge'] = charge
-
-    output_dir = os.path.join(DATA_DIR, 'ads_by_day')
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    df_ads_by_day.to_csv(
-            os.path.join(output_dir, 'shop_{0}.csv'.format(shop_id)), 
-            index=True, index_label='create_dt')
-
-def get_sale_amt_by_day(shop_id_list):
+def get_features(shop_id_list):
     sale_amt_matrix = []
+    features = []
+    cols = ['sale_amt', 'ads_consume', 
+            'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
+
     for id in shop_id_list:
-        filename = os.path.join(DATA_DIR, 'sale_amt_by_day', 'shop_{0}.csv'.format(id))
+        filename = os.path.join(DATA_DIR, 'features', 'shop_{0}.csv'.format(id))
         df = pd.read_csv(filename)
-        df.index = df['ord_dt'].tolist()
+        df['ord_dt'] = pd.to_datetime(df['ord_dt'])
+        #df.index = df['ord_dt'].tolist()
         #df = df.drop(['2016-11-11'])
-        sale_amt = df['sale_amt'].tolist()
-        sale_amt_matrix.append(sale_amt)
+        feat = df[cols].values
+        features.append(feat)
 
-    sale_amt = np.asarray(sale_amt_matrix, dtype=np.float32)
+    features = np.asarray(features, dtype=np.float32)
+    print('features.shape: {0}'.format(features.shape))
+    return features
 
-    return sale_amt
+    
 
-
-def get_train_data(sale_amt, seq_len):
+def get_train_data(sale_amt, seq_len, features):
     train_XY = sale_amt[:, :-90]
     valid_Y = sale_amt[:, -90:]
     valid_X = train_XY[:, -seq_len:]
@@ -165,25 +176,21 @@ def _train_X_train_Y(train_XY, input_seq_len, output_seq_len):
     for ii in range(slides):
         e1, e2 = ii, ii + input_seq_len
         one_seq = train_XY[:, e1:e2]
-        one_y = train_XY[:, e2:e2+output_seq_len]
+        one_y = train_XY[:, e2:e2+output_seq_len, 0:1]
         train_X.append(one_seq)
         train_Y.append(one_y)
 
     train_X = np.concatenate(train_X, axis=0)
     train_Y = np.concatenate(train_Y, axis=0)
-    train_X = train_X[:, :, np.newaxis]
-    train_Y = train_Y[:, :, np.newaxis]
     print('train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
     print('train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
     return train_X, train_Y
 
 
-def get_seq2seq_data(sale_amt, input_seq_len, output_seq_len):
-    train_XY = sale_amt[:, :-output_seq_len]
+def get_seq2seq_data(features, input_seq_len, output_seq_len):
+    train_XY = features[:, :-output_seq_len]
     valid_X = train_XY[:, -input_seq_len:]
-    valid_Y = sale_amt[:, -output_seq_len:]
-    valid_X = valid_X[:, :, np.newaxis]
-    valid_Y = valid_Y[:, :, np.newaxis]
+    valid_Y = features[:, -output_seq_len:, 0:1]
 
     print('train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
     print('valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
