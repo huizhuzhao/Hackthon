@@ -170,14 +170,14 @@ def get_train_data(sale_amt, seq_len, features):
 
     return datat
 
-def _train_X_train_Y(train_XY, input_seq_len, output_seq_len):
+def _train_X_train_Y(train_XY, input_seq_len, output_seq_len, interval=10):
     train_X = []
     train_Y = []
     total_seq_len = train_XY.shape[1]
     slides = total_seq_len - input_seq_len - output_seq_len + 1
     assert slides > 0, ("slides: {0}".format(slides))
     print('slides: {0}'.format(slides))
-    for ii in range(slides):
+    for ii in range(0, slides, interval):
         e1, e2 = ii, ii + input_seq_len
         one_seq = train_XY[:, e1:e2]
         one_y = train_XY[:, e2:e2+output_seq_len, 0:1]
