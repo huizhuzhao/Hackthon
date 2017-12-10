@@ -115,6 +115,93 @@ def get_sale_amt_by_day(shop_id_list):
     return sale_amt
 
 
+def get_train_data(sale_amt, seq_len):
+    train_XY = sale_amt[:, :-90]
+    valid_Y = sale_amt[:, -90:]
+    valid_X = train_XY[:, -seq_len:]
+    valid_X = valid_X[:, :, np.newaxis]
+    print('train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
+    print('valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
+    print('valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
+
+    train_X = []
+    train_Y = []
+    total_seq_len = train_XY.shape[1]
+    slides = total_seq_len - seq_len - 1
+    print('slides: {0}'.format(slides))
+    for ii in range(slides):
+        s, e = ii, ii + seq_len
+        one_seq = train_XY[:, s:e]
+        one_y = train_XY[:, e: e+1]
+        train_X.append(one_seq)
+        train_Y.append(one_y)
+
+    train_X = np.concatenate(train_X, axis=0)
+    train_Y = np.concatenate(train_Y, axis=0)
+    train_X = train_X[:, :, np.newaxis]
+
+    print('train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
+    print('train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
+
+    class Datat(object):
+        pass
+
+    datat = Datat()
+    datat.train_X = train_X
+    datat.train_Y = train_Y
+    datat.valid_X = valid_X
+    datat.valid_Y = valid_Y
+    datat.scaler = None
+
+    return datat
+
+def _train_X_train_Y(train_XY, input_seq_len, output_seq_len):
+    train_X = []
+    train_Y = []
+    total_seq_len = train_XY.shape[1]
+    slides = total_seq_len - input_seq_len - output_seq_len + 1
+    assert slides > 0, ("slides: {0}".format(slides))
+    print('slides: {0}'.format(slides))
+    for ii in range(slides):
+        e1, e2 = ii, ii + input_seq_len
+        one_seq = train_XY[:, e1:e2]
+        one_y = train_XY[:, e2:e2+output_seq_len]
+        train_X.append(one_seq)
+        train_Y.append(one_y)
+
+    train_X = np.concatenate(train_X, axis=0)
+    train_Y = np.concatenate(train_Y, axis=0)
+    train_X = train_X[:, :, np.newaxis]
+    train_Y = train_Y[:, :, np.newaxis]
+    print('train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
+    print('train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
+    return train_X, train_Y
+
+
+def get_seq2seq_data(sale_amt, input_seq_len, output_seq_len):
+    train_XY = sale_amt[:, :-output_seq_len]
+    valid_X = train_XY[:, -input_seq_len:]
+    valid_Y = sale_amt[:, -output_seq_len:]
+    valid_X = valid_X[:, :, np.newaxis]
+    valid_Y = valid_Y[:, :, np.newaxis]
+
+    print('train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
+    print('valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
+    print('valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
+
+    train_X, train_Y = _train_X_train_Y(train_XY, input_seq_len, output_seq_len)
+    class Datat(object):
+        pass
+
+    datat = Datat()
+    datat.train_X = train_X
+    datat.train_Y = train_Y
+    datat.valid_X = valid_X
+    datat.valid_Y = valid_Y
+
+    return datat
+
+
 class DataTransform(object):
     def __init__(self, sale_amt, seq_len):
         self.sale_amt = sale_amt
@@ -174,10 +261,13 @@ def get_callbacks(log_dir):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    weights_filename = os.path.join(log_dir, 'weights_{epoch_02d}_{loss_.2f}.hdf5')
+    weights_filename = os.path.join(log_dir, 'weights_{epoch:02d}_{loss:.2f}.hdf5')
     ckpt = callbacks.ModelCheckpoint(weights_filename, monitor='loss', save_best_only=True)
 
     logger_filename = os.path.join(log_dir, 'logger.csv')
-    csv_logger = callbacks.CSVLogger(logger_filename)
+    csv_logger = callbacks.CSVLogger(logger_filename, append=True)
 
     return [ckpt, csv_logger]
+
+
+

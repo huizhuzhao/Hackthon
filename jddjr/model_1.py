@@ -13,7 +13,7 @@ from tensorflow.contrib.keras import layers
 from Hackthon.jddjr import utils
 
 
-def build_model(seq_len):
+def build_model(seq_len, num_samples):
 
     RNN = keras.layers.LSTM
     LAYERS = 3
@@ -24,7 +24,8 @@ def build_model(seq_len):
     model.add(RNN(100, return_sequences=False))
     model.add(layers.Dense(1, activation='linear'))
 
-    optimizer = optimizers.Adam(lr=0.01)
+    decay = 1. / num_samples
+    optimizer = optimizers.SGD(lr=0.005, decay=decay)
     model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mae'])
 
     print('model input shape: {0}'.format(model.input_shape))
@@ -58,28 +59,32 @@ def evaluate(model, valid_X, valid_Y, seq_len, scaler=None):
 
 def main():
     seq_len = 10
-    batch_size = 32
-    epochs = 20
-    sale_amt = utils.get_sale_amt_by_day(range(1, 3001))
-    datat = utils.DataTransform(sale_amt, seq_len)
-    datat.scale()
-    datat.get_train_data()
+    batch_size = 64
+    epochs = 50
+    sale_amt = utils.get_sale_amt_by_day(range(1, 300))
 
-    model = build_model(seq_len)
+    datat = utils.get_train_data(sale_amt, seq_len)
+
+    num_samples = datat.train_X.shape[0]
+    model = build_model(seq_len, num_samples)
     scores = []
 
     log_dir = os.path.join(utils.DATA_DIR, 'logs')
     callbacks = utils.get_callbacks(log_dir)
-    model.fit(datat.train_X, datat.train_Y, batch_size=batch_size, epochs=epochs, callbacks=callbacks)
-    """
-    for ii in range(epochs):
-        score = evaluate(model, datat.valid_X, datat.valid_Y, seq_len, datat.scaler)
-        scores.append(score)
-        model.fit(datat.train_X, datat.train_Y, batch_size=batch_size, epochs=1)
 
-    df_metrics = pd.DataFrame({'epochs': range(epochs), 'scores': scores})
-    df_metrics.to_csv(os.path.join(utils.DATA_DIR, 'logger.csv'))
-    """
+    #model.load_weights(os.path.join(log_dir, 'weights_08_0.61.hdf5'))
+    initial_epoch = 0
+    for ii in range(epochs):
+      score = evaluate(model, datat.valid_X, datat.valid_Y, seq_len, datat.scaler)
+      scores.append(score)
+      model.fit(datat.train_X, datat.train_Y, 
+          batch_size=batch_size, epochs=initial_epoch+1, 
+          callbacks=callbacks, initial_epoch=initial_epoch)
+      initial_epoch += 1
+
+  
+      df_metrics = pd.DataFrame({'epochs': range(len(scores)), 'scores': scores})
+      df_metrics.to_csv(os.path.join(log_dir, 'score_logger.csv'))
 
 
 
