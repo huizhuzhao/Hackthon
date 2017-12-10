@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 from tensorflow.contrib.keras import callbacks
 
 
@@ -211,6 +212,40 @@ def get_seq2seq_data(features, input_seq_len, output_seq_len):
     datat.valid_Y = valid_Y
 
     return datat
+
+def get_seq2seq_data_2(features, input_seq_len, output_seq_len, interval=1):
+    features = features[:, :, 0]
+    valid_y = features[:, -output_seq_len:]
+    train_Xy = features[:, :-output_seq_len]
+
+    scaler = MinMaxScaler()
+    scaler.fit(train_Xy.T)
+    train_Xy = scaler.transform(train_Xy.T).T
+
+    train_Xy = train_Xy[:, :, np.newaxis]
+    #valid_y = valid_y[:, :, np.newaxis]
+    valid_X = train_Xy[:, -input_seq_len:]
+
+    train_X, train_y = _train_X_train_Y(train_Xy, input_seq_len, output_seq_len, interval)
+    print(features.shape)
+    print('valid_X.shape: {0}'.format(valid_X.shape))
+    print('valid_y.shape: {0}'.format(valid_y.shape))
+    print('train_X.shape: {0}'.format(train_X.shape))
+    print('train_y.shape: {0}'.format(train_y.shape))
+
+    class Datat(object):
+        pass
+
+    datat = Datat()
+    datat.train_X = train_X
+    datat.train_Y = train_y
+    datat.valid_X = valid_X
+    datat.valid_Y = valid_y
+    datat.scaler = scaler
+
+    return datat
+
+
 
 def resample_date(start_date, end_date, gap, shop_id=None): 
     """

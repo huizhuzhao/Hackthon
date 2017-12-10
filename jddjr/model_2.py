@@ -23,7 +23,7 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
     model = models.Sequential()
 
     model.add(layers.TimeDistributed(layers.Dense(100, activation='relu'), 
-        input_shape=(input_seq_len, 9)))
+        input_shape=(input_seq_len, 1)))
     for _ in range(encoder_layers):
         model.add(RNN(hidden_dim, return_sequences=True))
     model.add(RNN(hidden_dim, return_sequences=False))
@@ -34,7 +34,7 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
     model.add(layers.TimeDistributed(layers.Dense(1)))
 
     decay = 1. / num_samples
-    optimizer = optimizers.Adam(lr=0.3, decay=decay)
+    optimizer = optimizers.Adam(lr=0.1, decay=decay)
 
     def score_func(y_true, y_pred):
         y_true = tf.reduce_sum(y_true, axis=1)
@@ -47,11 +47,23 @@ def build_model(input_seq_len, output_seq_len, num_samples, multi_gpus=False):
     if multi_gpus:
         model = keras.utils.multi_gpu_model(model, gpus=2)
 
-    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mae', score_func])
+    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mae'])
 
     print('model input shape: {0}'.format(model.input_shape))
     print('model output shape: {0}'.format(model.output_shape))
     return model
+
+def evaluate(model, datat):
+    y_pred = model.predict(datat.valid_X)
+    y_pred = np.squeeze(y_pred)
+    y_pred = datat.scaler.inverse_transform(y_pred.T).T
+
+    y_pred_sum = np.sum(y_pred, axis=1)
+    y_true_sum = np.sum(datat.valid_Y, axis=1)
+    score = np.sum(np.abs(y_pred_sum - y_true_sum)) / np.sum(y_true_sum)
+
+    print('score: {0}'.format(score))
+    return score
 
 
 
@@ -61,8 +73,9 @@ def main():
     batch_size = 64
     epochs = 50
 
-    features = utils.get_features(range(1, 300), 'features_v2')
-    datat = utils.get_seq2seq_data(features, input_seq_len, output_seq_len)
+    features = utils.get_features(range(1, 3001), 'features_v2')
+    print(features.shape)
+    datat = utils.get_seq2seq_data_2(features, input_seq_len, output_seq_len, interval=2)
     num_samples = datat.train_X.shape[0]
     print('num_samples: {0}'.format(num_samples))
 
@@ -75,11 +88,15 @@ def main():
 
     #model.load_weights(os.path.join(log_dir, 'weights_07_7208713.48.hdf5'))
     print(model.summary())
-    model.fit(datat.train_X, datat.train_Y, 
-            batch_size=batch_size, epochs=epochs, 
-            callbacks=callbacks,
-            validation_data=(datat.valid_X, datat.valid_Y))
+    for ii in range(epochs):
+        model.fit(datat.train_X, datat.train_Y, 
+                batch_size=batch_size, epochs=ii+1, 
+                callbacks=callbacks,
+                initial_epoch=ii)
+        evaluate(model, datat)
+    """
     #utils.generate_features_by_day(range(300, 3001), 'features_v2')
+    """
 
 
 
