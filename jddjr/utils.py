@@ -155,16 +155,51 @@ def get_train_data(sale_amt, seq_len):
 
     return datat
 
+def _train_X_train_Y(train_XY, input_seq_len, output_seq_len):
+    train_X = []
+    train_Y = []
+    total_seq_len = train_XY.shape[1]
+    slides = total_seq_len - input_seq_len - output_seq_len + 1
+    assert slides > 0, ("slides: {0}".format(slides))
+    print('slides: {0}'.format(slides))
+    for ii in range(slides):
+        e1, e2 = ii, ii + input_seq_len
+        one_seq = train_XY[:, e1:e2]
+        one_y = train_XY[:, e2:e2+output_seq_len]
+        train_X.append(one_seq)
+        train_Y.append(one_y)
+
+    train_X = np.concatenate(train_X, axis=0)
+    train_Y = np.concatenate(train_Y, axis=0)
+    train_X = train_X[:, :, np.newaxis]
+    train_Y = train_Y[:, :, np.newaxis]
+    print('train_X.shape/max: {0}/{1}'.format(train_X.shape, np.max(train_X)))
+    print('train_Y.shape/max: {0}/{1}'.format(train_Y.shape, np.max(train_Y)))
+    return train_X, train_Y
+
 
 def get_seq2seq_data(sale_amt, input_seq_len, output_seq_len):
     train_XY = sale_amt[:, :-output_seq_len]
     valid_X = train_XY[:, -input_seq_len:]
     valid_Y = sale_amt[:, -output_seq_len:]
+    valid_X = valid_X[:, :, np.newaxis]
+    valid_Y = valid_Y[:, :, np.newaxis]
 
     print('train_XY.shape/max: {0}/{1}'.format(train_XY.shape, np.max(train_XY)))
     print('valid_X.shape/max: {0}/{1}'.format(valid_X.shape, np.max(valid_X)))
     print('valid_Y.shape/max: {0}/{1}'.format(valid_Y.shape, np.max(valid_Y)))
 
+    train_X, train_Y = _train_X_train_Y(train_XY, input_seq_len, output_seq_len)
+    class Datat(object):
+        pass
+
+    datat = Datat()
+    datat.train_X = train_X
+    datat.train_Y = train_Y
+    datat.valid_X = valid_X
+    datat.valid_Y = valid_Y
+
+    return datat
 
 
 class DataTransform(object):
